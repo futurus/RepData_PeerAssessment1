@@ -2,19 +2,79 @@
 
 
 ## Loading and preprocessing the data
+1. Loading data with read.csv and unzip.
+```{r}
+data = read.csv(unzip(zipfile = "activity.zip"))
+head(data)
+```
 
-
+2. We convert data to data.table to help with data manipulation
+```{r}
+library(data.table)
+DT = data.table(data)
+```
 
 ## What is mean total number of steps taken per day?
+```{r}
+library(ggplot2)
+qplot(DT[ , sum(steps), by=date]$V1, xlab="Total # of steps per day")
 
+mean(DT[ , sum(steps), by=date]$V1, na.rm=TRUE)
+median(DT[ , sum(steps), by=date]$V1, na.rm=TRUE)
+```
 
 
 ## What is the average daily activity pattern?
+1. Time series plot 5-min interval (x-axis) against the average number of steps taken (across all days, y-axis).
+```{r}
+qplot(unique(data$interval), DT[ , mean(steps, na.rm=T), by=interval]$V1, geom="line",
+      xlab="Interval", ylab="Average steps taken")
+```
 
-
+2. The maximum number of steps taken during a 5-min interval, on average accross all the days in the dataset, is `r max(DT[ , mean(steps, na.rm=T), by=interval]$V1)`, and it happens on interval number
+```{r}
+unique(data$interval)[which.max(DT[ , mean(steps, na.rm=T), by=interval]$V1)]
+```
 
 ## Imputing missing values
+1. The total number of missing values in the dataset is
+```{r}
+length(which(is.na(data$steps)))
+```
+2. Imputing data, here we will fill NAs with the mean for the respective 5-min intervals.
+3. The new data set is named 'impData'
+```{r}
+aSpInt = DT[ , mean(steps, na.rm=T), by=interval]; impData = data
+for (i in 1:nrow(impData)) { 
+  if (is.na(impData$steps[i])) {
+      impData$steps[i] = aSpInt$V1[which(aSpInt$interval == impData$interval[i])]
+    } 
+  }
+head(impData)
+```
+4. The histogram (of steps per day) now has peak at the mean of total number of steps taken per day. The mean is unchanged, and median is now equal to the mean (though the change is unsignificant). This is because (through quick visual inspection) NAs were not random, they occurred in each whole day (i.e., if a date contains an interval with NA, then all of its intervals are NA). By imputing data with means of interval across all days in the dataset, we are effectively filling these NA dates with the average number of steps taken per day (sum of averages = average of sums). We added over 86129 steps over 8 NA dates.
+```{r}
+iDT = data.table(impData)
+qplot(iDT[ , sum(steps), by=date]$V1, xlab="Total # of steps per day")
 
+mean(iDT[ , sum(steps), by=date]$V1, na.rm=TRUE)
+median(iDT[ , sum(steps), by=date]$V1, na.rm=TRUE)
+```
 
-
+*Visual inspection
+```{r}
+head(cbind(DT[ , sum(steps), by=date]$V1, iDT[ , sum(steps), by=date]$V1))
+```
 ## Are there differences in activity patterns between weekdays and weekends?
+1. We create factor variable 'day' with two levels "weekday" and "weekend".
+```{r}
+iDT[ , day:=factor(ifelse(weekdays(as.Date(date)) %in% c("Saturday", "Sunday"),"weekend", "weekday"))]
+```
+2. Average number of steps across all intervals on weekdays against weekends.
+```{r}
+library(lattice)
+wdAvgs = iDT[day=="weekday", mean(steps), by=interval][ , day:="weekday"]
+weAvgs = iDT[day=="weekend", mean(steps), by=interval][ , day:="weekend"]
+Avgs = rbind(wdAvgs, weAvgs)
+xyplot(V1 ~ interval | day, data=Avgs, type="l",layout=c(1, 2), ylab="Number of steps", xlab="Interval")
+```
